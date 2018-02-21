@@ -7,8 +7,8 @@ coverImage: http://images.all-free-download.com/images/graphicthumb/simple_world
 metaAlignment: center
 coverMeta: out
 date: 2018-02-13T21:13:14-05:00
-categories: ["personal projects"]
-tags: ["world maps", "cross-validation", "plot", "surveys", "Kaggle", "regression"]
+categories: ["Personal projects"]
+tags: ["world maps", "cross validation", "plot", "surveys", "Kaggle", "regression"]
 ---
 
 ```{r setup, include=FALSE}
@@ -21,6 +21,7 @@ library(ggplot2)
 library(rgdal) # for reading shapefile
 library(RColorBrewer)
 library(classInt)
+library(cvTools) 
 
 ks <- read.csv("data/multipleChoiceResponses.csv")
 cr <- read.csv("data/conversionRates.csv")
@@ -79,6 +80,7 @@ table <- as.data.frame(cbind(Varname, Description))
 kable(table[1:2,])
 ```
 
+<br>
 
 ## Preparing the variables
 
@@ -166,7 +168,7 @@ rm(Countrygenderdesc)
 
 ```
 
-In the above table you can search per country to see the proportion of women, the mean job satisfaction, and the gender inequality in job satisfaction, where <1 favors men and >1 favors women. 
+In the above table you can search per country to see the proportion of women and the mean job satisfaction. 
 
 <br>
 
@@ -287,12 +289,13 @@ jobsat.4 <- lm(meanmaleJobSat ~ meanfem + meaninc, data=Countrydescriptives)
 summary(jobsat.4) 
 ```
 
-Could be! Indeed, once we control for the mean income of tech workers, the effect of the proportion of women on men's job satisfaction dissappears. The question is of course, if employers are discriminating against women by paying them less and that discrimination brings down the overall salary levels. An alternate explanation might be that countries where incomes are lower (developing countries, perhaps) tend to be more gender egalitarian in the tech workplace, and that men don't give a sh*t about how many women they work with, as long as their salaries are high enough.  
+Could be! Indeed, once we control for the mean income of tech workers, the effect of the proportion of women on men's job satisfaction dissappears. This might imply that employers are discriminating against women by paying them less, and that discrimination brings down the overall salary levels. However, since we are only observing cross-sectional, macro-level phenomena, we can't say anything about causality.
 
+<br>
 
 ### Individual level
 
-You'll notice that in the above analyses, I look at country level averages and find that the _average_ level of job satisfaction is lower in countries where the proportion of women in tech is smaller. That's all fine and well, but the question was if people experience a tradeoff between job satisfaction and diversity. That means that it's not enough to look at national averages, we have to consider how gender diversity affects (or is correlated with) individuals' job satisfaction. That we do with a multilevel analysis.
+You'll notice that in the above analyses, I look at country level averages and find that the _average_ level of job satisfaction is lower in countries where the proportion of women in tech is greater That's all fine and well, but the question was if individuals experience a tradeoff between job satisfaction and diversity. That means that it's not enough to look at national averages, we have to consider how gender diversity affects (or is correlated with) individuals' job satisfaction. That we do with a multilevel analysis.
 
 ```{r random intercept}
 mljobsat.1 <- lmer(jobsat ~ meanfem + (1 | Country), data=ks)
@@ -307,7 +310,7 @@ We can also calculate the interclass correlation, which tells us how similar res
 (ICC <- 0.1479/(0.1479 + 4.4752))
 ```
 
-3% of variation in job satisfaction between respondents can be explained by the country level (after controlling for proportion of women working in tech). Incidentally, the variation is not much bigger when we don't include the proportion of women.
+3% of variation in job satisfaction between respondents can be explained by the country level (after controlling for proportion of women working in tech). Incidentally, the variance in job satisfaction explained by country of residence is not much bigger when we don't include the proportion of women.
 
 The R command `lmer()` purposefully does not print confidence intervals or p-values out of an ideological objection to basing decisions purely on p-values. Their point is that we should consider the size of the effect as well as its statistical significance. Nonetheless, I find it useful to know if we repeated our test 100 times, how often would our estimated effect be different from 0? We can calculate a confidence interval using the standard error of the estimate, with the result that our confidence interval for the effect of meanfem on jobsat is:
 
@@ -315,7 +318,7 @@ The R command `lmer()` purposefully does not print confidence intervals or p-val
 (CI <- c(-2.6003 - 1.96*1.1636 , -2.600 + 1.96*1.1636))
 ```
 
-Thus, people are less satisfied with their jobs when there is a higher proportion of women working in tech. Again we distinguish between men's satisfaction and women's:
+Thus, people are significantly less satisfied with their jobs when there is a higher proportion of women working in tech. Again we distinguish between men's satisfaction and women's:
 
 
 ```{r mljobsat.2}
@@ -357,29 +360,35 @@ It's a pretty wide standard error again, so let's compute the confidence interva
 (CI <- c(-2.75309 - 1.96*1.30205 , -2.75309 + 1.96*1.30205))
 ```
 
-This is significant, thus while the effect of income seems to overrule the effect of gender diversity at the country level, at the individual level, including it removes some variation which disguised the role of gender diversity. 
+Here the proportion of women in tech is significant. Thus while the effect of income seems to overrule the effect of gender diversity as a macro phenomenon, at the individual-level, the positive effect of income actually _compensates_ for some of the negative effect of gender diversity. 
+
+<br>
 
 ### Cross-level interactions
 
-There's one final way to test whether the gender composition has a different effect for men and women, and that's with a cross-level interaction. 
+There's one final way to test whether the gender composition has a different effect for men and women, and that's with a cross-level interaction. In this model we ask whether the effect of being female varies depending on the proportion of women in tech. 
 
 ```{r cljobsat}
 cljobsat <- lmer(jobsat ~ female*meanfem + (1 + female | Country), data=ks)
 summary(cljobsat) 
 ```
 
-The interaction is not significant, but the negative effect of gender diversity on job satisfaction remains. I suspect this model is producing wide confidence intervals because we've demanded more of it than the data can handle. But for argument's sake, let's run the same model above including income in the equation. 
+The interaction between female and meanfem is not significant, but the negative effect of gender diversity on job satisfaction remains. I suspect this model is producing wide confidence intervals because we've demanded more of it than the data can handle. But for argument's sake, let's run the same model above including income in the equation. 
 
 ```{r cljobsat.2}
 cljobsat.2 <- lmer(jobsat ~ female*meanfem + CompUSDLog + (1 + female | Country), data=ks)
 summary(cljobsat.2) 
 ```
 
-Let's now compare models jobsat.4, mljobsat.4, and cljobsat.2. This i do by segmenting the data into 10 subsets, running the model on each subset, and then correlating predicted and observed values.  
+This model produces the same results as the previous cross-level interaction model, with an additional significant and positive effect of income. 
+
+<br>
+
+## Cross validation
+
+Let's now compare our three models (jobsat.4, mljobsat.4, and cljobsat.2) which illustrate the effect of gender diversity on job satisfaction after controlling for income. This i do by segmenting the data into 10 subsets, running the model on each subset, and then correlating predicted and observed values.  
 
 ```{r compare models}
-library(cvTools) 
-
 # jobsat.4
 folds <- cvFolds(NROW(Countrydescriptives), K=10)
 Countrydescriptives$pred.4 <- rep(0,nrow(Countrydescriptives))
@@ -439,12 +448,12 @@ correlations <- c(round(cor_jobsat.4[2,1],2),round(cor_mljobsat.4[2,1],2),round(
 
 ```
 
-Here I assess accuracy by comparing the correlation between the predicted outcomes based on the regression model and the observed outcomes. The first model, jobsat.4 that only looked at country-level descriptives, has the highest correlation at .30. The individual level models with a simple multilevel structure are less accurate. Therefore, from purely a predictive standpoint, the simplest model performs the best. 
+Here I assess accuracy by comparing the correlation between the predicted outcomes based on the regression model and the observed outcomes. The first model, jobsat.4 that only looked at country-level descriptives, has the highest correlation at approximately .30. The individual level models with a simple multilevel structure are less accurate. Therefore, from purely a predictive standpoint, the simplest model performs the best. However, the models also answer different questions. The first model, jobsat.4, describes how gender diversity affects average job satisfaction (*it doesn't*), while the other two models, mljobsat.4 and cljobsat.2, describe how gender diversity affects _individual_ job satisfaction (*it does--negatively*). Thus, the question of which model to use is not purely a question of which model makes better predictions, but also of what question are we trying to answer. 
 
 <br>
 
 ## Conclusion
-I started out by asking if there is a tradeoff between gender diversity and job satisfaction, and it does appear that job satisfaction is lower in countries where there are more women working in tech, however, this appears to be primarily a male phenomenon. Women experience neither dips nor boosts with regard to job satisfaction. 
+I started out by asking if there is a tradeoff between gender diversity and job satisfaction, and it does appear that individual job satisfaction is lower in countries where there are more women working in tech, particularly for men. That's the bad news. The good news is that these models are quite poor predictors of overall job satisfaction. Luckily for employers and policy makers who want to increase gender diversity, there are many other factors that can compensate for its negative effect on job satisfaction. 
 
 This post can be found on [GitHub](https://github.com/brettory/genderegal-jobsat).
 
